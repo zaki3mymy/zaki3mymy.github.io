@@ -2,12 +2,13 @@
 // CLIENT_ID は WASM 初期化後に window.FLUXJOT_CLIENT_ID として提供される。
 // ビルド時注入: GOOS=js GOARCH=wasm go build -ldflags "-X 'main.defaultClientID=<ID>'"
 // 未注入（開発ビルド）の場合は空文字列となり、認証ボタンは機能しない。
-// REDIRECT_URI: window.location.pathname は末尾スラッシュが付く場合があり
-// Google OAuth 承認済み URI と不一致になるため origin のみ使用する。
-const REDIRECT_URI = window.location.origin;
+// REDIRECT_URI: origin + pathname（末尾スラッシュ正規化）により GitHub Pages サブパスに対応する。
+const REDIRECT_URI = window.location.origin +
+  window.location.pathname.replace(/\/?$/, "/");
 const SCOPES = "https://www.googleapis.com/auth/drive";
 const TOKEN_KEY = "fluxjot_token";
 const VERIFIER_KEY = "fluxjot_code_verifier";
+const PENDING_TEXT_KEY = "fluxjot_pending_text";
 
 // PKCE ヘルパー: ランダム文字列生成
 function generateRandomString(len) {
@@ -134,16 +135,44 @@ function updateAuthUI() {
   if (token) {
     authSection.style.display = "none";
     appSection.style.display = "block";
+    const pending = sessionStorage.getItem(PENDING_TEXT_KEY);
+    if (pending) {
+      sessionStorage.removeItem(PENDING_TEXT_KEY);
+      setBodyText(pending);
+    }
   } else {
     authSection.style.display = "block";
     appSection.style.display = "none";
   }
 }
 
+// URL の ?text= パラメータを読み取る。
+// 認証済みなら即座に #body へセット、未認証なら sessionStorage に保存。
+function handleTextParam() {
+  const params = new URLSearchParams(window.location.search);
+  const text = params.get("text");
+  if (!text) return;
+  window.history.replaceState({}, "", window.location.pathname);
+  if (localStorage.getItem(TOKEN_KEY)) {
+    setBodyText(text);
+  } else {
+    sessionStorage.setItem(PENDING_TEXT_KEY, text);
+  }
+}
+
+function setBodyText(text) {
+  const bodyEl = document.getElementById("body");
+  if (!bodyEl) return;
+  bodyEl.value = text;
+  bodyEl.focus();
+  bodyEl.scrollIntoView({ behavior: "smooth" });
+}
+
 // ページロード時にコールバックを確認（WASM ロード前に実行）
 handleOAuthCallback().then(authenticated => {
   if (authenticated) updateAuthUI();
 });
+handleTextParam();
 
 const go = new Go();
 WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
