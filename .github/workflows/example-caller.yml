@@ -1,0 +1,49 @@
+# このファイルは呼び出し元リポジトリに置くサンプルです。
+# zaki3mymy.github.io リポジトリには不要です。コピーして各プロジェクトに配置してください。
+#
+# 使い方:
+#   1. このファイルを 呼び出し元リポジトリの .github/workflows/deploy.yml にコピー
+#   2. build ジョブのビルドコマンドを実際のものに書き換える
+#   3. target-directory を公開したいパスに変更する (例: MyApp)
+
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- ここをプロジェクトに合わせて変更 ----
+      - name: Build
+        run: |
+          echo "ここにビルドコマンドを記載する"
+          # 例: npm ci && npm run build
+          # ビルド結果は dist/ ディレクトリに出力する想定
+      # ------------------------------------------
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/          # ビルド出力ディレクトリ
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    # zaki3mymy/zaki3mymy.github.io の再利用可能ワークフローを呼び出す
+    uses: zaki3mymy/zaki3mymy.github.io/.github/workflows/deploy.yml@main
+    with:
+      artifact-name: dist
+      target-directory: RuffMate        # 変更: pagesリポジトリ内の配置先
+      source-run-id: ${{ github.run_id }}
+      source-repository: ${{ github.repository }}
+    secrets:
+      # 呼び出し元の GITHUB_TOKEN を渡す (アーティファクト読み取りに使用)
+      source-token: ${{ secrets.GITHUB_TOKEN }}

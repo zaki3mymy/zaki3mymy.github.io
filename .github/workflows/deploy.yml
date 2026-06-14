@@ -1,0 +1,64 @@
+name: Deploy Static Files to Pages
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: 'デプロイするアーティファクト名'
+        required: true
+        type: string
+      target-directory:
+        description: 'pagesリポジトリ内の配置先ディレクトリ (例: RuffMate)'
+        required: true
+        type: string
+      source-run-id:
+        description: '呼び出し元ワークフローの run_id'
+        required: true
+        type: string
+      source-repository:
+        description: '呼び出し元リポジトリ (owner/repo 形式)'
+        required: true
+        type: string
+    secrets:
+      source-token:
+        description: '呼び出し元リポジトリのアーティファクトを読むためのトークン'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # zaki3mymy 本人のみ実行を許可する
+    if: github.actor == 'zaki3mymy'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout pages repo
+        uses: actions/checkout@v4
+
+      - name: Download artifact from source repo
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ./downloaded-artifact
+          github-token: ${{ secrets.source-token }}
+          run-id: ${{ inputs.source-run-id }}
+          repository: ${{ inputs.source-repository }}
+
+      - name: Deploy files to target directory
+        run: |
+          mkdir -p "${{ inputs.target-directory }}"
+          rm -rf "${{ inputs.target-directory }}"/*
+          cp -r ./downloaded-artifact/* "${{ inputs.target-directory }}/"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.target-directory }}"
+          if git diff --staged --quiet; then
+            echo "変更なし。スキップします。"
+          else
+            git commit -m "Deploy ${{ inputs.target-directory }} from ${{ inputs.source-repository }}@${{ inputs.source-run-id }}"
+            git push
+          fi
