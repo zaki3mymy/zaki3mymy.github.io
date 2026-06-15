@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FluxJot</title>
+<link id="sakura-theme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sakura.css/css/sakura.css" type="text/css">
+<style>
+#sync-status {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 6px 12px;
+  font-size: 0.85em;
+  min-height: 1.5em;
+}
+#sync-status.sync-syncing {
+  background-color: #cce5ff;
+  color: #004085;
+}
+#sync-status.sync-ok {
+  background-color: #d4edda;
+  color: #155724;
+}
+#sync-status.sync-error {
+  background-color: #f8d7da;
+  color: #721c24;
+  cursor: pointer;
+}
+#sync-status.sync-unauthenticated {
+  background-color: #fff3cd;
+  color: #856404;
+}
+#body, #search, [id^="edit-body-"] {
+  width: 100%;
+  font-size: 1.8rem;
+}
+@media (max-width: 684px) {
+  #body, #search, [id^="edit-body-"] {
+    font-size: 1.35rem;
+  }
+}
+</style>
+</head>
+<body>
+<div id="sync-status"></div>
+<h1>FluxJot</h1>
+<label for="theme-select">テーマ: </label>
+<select id="theme-select">
+  <option value="sakura">Default</option>
+  <option value="sakura-dark">Dark</option>
+  <option value="sakura-vader">Vader</option>
+  <option value="sakura-earthly">Earthly</option>
+</select>
+<div id="auth-section">
+  <p>Google Drive と同期するにはログインしてください。</p>
+  <button onclick="startAuth()">Google でログイン</button>
+</div>
+<div id="app-section" style="display:none">
+<h2>メモ作成</h2>
+<form id="create-form">
+  <textarea id="body" maxlength="1024" placeholder="メモを入力... (#タグ)" required rows="4"></textarea>
+  <br>
+  <button type="submit">保存</button>
+  <p id="error" style="color:red"></p>
+</form>
+<h2>メモ一覧</h2>
+<input id="search" type="text"
+  placeholder="検索 (テキスト / #タグ / since:yyyy-mm-dd / until:yyyy-mm-dd)">
+<div id="list"></div>
+</div>
+<script src="wasm_exec.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
