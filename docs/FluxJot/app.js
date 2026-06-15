@@ -168,9 +168,39 @@ function setBodyText(text) {
   bodyEl.scrollIntoView({ behavior: "smooth" });
 }
 
+// 二重呼び出し防御フラグ: initAfterAuth と waitForFluxjot のどちらか一方が先に
+// renderList/initSync を実行したら他方はスキップする。
+let syncInitialized = false;
+
 // ページロード時にコールバックを確認（WASM ロード前に実行）
 handleOAuthCallback().then(authenticated => {
-  if (authenticated) updateAuthUI();
+  if (!authenticated) return;
+  updateAuthUI();
+  // fluxjot が初期化済みであれば即座に、未初期化なら待機してから実行
+  const initAfterAuth = () => {
+    if (syncInitialized) return;
+    const tokenJSON = localStorage.getItem(TOKEN_KEY);
+    if (!tokenJSON) return;
+    syncInitialized = true;
+    renderList();
+    fluxjot.initSync(tokenJSON)
+      .then(() => fluxjot.startAutoSync(60000))
+      .catch(err => console.error("FluxJot: sync init failed:", err));
+  };
+  if (window.fluxjot) {
+    initAfterAuth();
+  } else {
+    const start = Date.now();
+    const wait = setInterval(() => {
+      if (window.fluxjot) {
+        clearInterval(wait);
+        initAfterAuth();
+      } else if (Date.now() - start >= 5000) {
+        clearInterval(wait);
+        console.error("FluxJot: window.fluxjot was not set within 5000ms");
+      }
+    }, 50);
+  }
 });
 handleTextParam();
 
@@ -187,7 +217,8 @@ WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
       if (window.fluxjot) {
         updateAuthUI();
         const tokenJSON = localStorage.getItem(TOKEN_KEY);
-        if (tokenJSON) {
+        if (tokenJSON && !syncInitialized) {
+          syncInitialized = true;
           renderList();
           fluxjot.initSync(tokenJSON)
             .then(() => fluxjot.startAutoSync(60000))
@@ -336,7 +367,7 @@ function startEdit(id, btn) {
   const div = btn.parentElement;
   const currentBody = div.querySelector("p:nth-child(2)").textContent.trim();
   div.innerHTML = `
-    <textarea id="edit-body-${id}" style="width:100%;font-size:1.8rem"
+    <textarea id="edit-body-${id}"
       onkeydown="if(event.ctrlKey&&event.key==='Enter'){event.preventDefault();saveEdit('${id}')}"
     >${currentBody}</textarea>
     <br>

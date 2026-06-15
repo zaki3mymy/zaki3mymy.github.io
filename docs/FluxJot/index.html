@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FluxJot</title>
 <link id="sakura-theme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sakura.css/css/sakura.css" type="text/css">
 <style>
@@ -30,6 +31,15 @@
   background-color: #fff3cd;
   color: #856404;
 }
+#body, #search, [id^="edit-body-"] {
+  width: 100%;
+  font-size: 1.8rem;
+}
+@media (max-width: 684px) {
+  #body, #search, [id^="edit-body-"] {
+    font-size: 1.35rem;
+  }
+}
 </style>
 </head>
 <body>
@@ -49,15 +59,14 @@
 <div id="app-section" style="display:none">
 <h2>メモ作成</h2>
 <form id="create-form">
-  <textarea id="body" maxlength="1024" placeholder="メモを入力... (#タグ)" required rows="4" style="width:100%;font-size:1.8rem"></textarea>
+  <textarea id="body" maxlength="1024" placeholder="メモを入力... (#タグ)" required rows="4"></textarea>
   <br>
   <button type="submit">保存</button>
   <p id="error" style="color:red"></p>
 </form>
 <h2>メモ一覧</h2>
 <input id="search" type="text"
-  placeholder="検索 (テキスト / #タグ / since:yyyy-mm-dd / until:yyyy-mm-dd)"
-  style="width:100%;font-size:1.8rem">
+  placeholder="検索 (テキスト / #タグ / since:yyyy-mm-dd / until:yyyy-mm-dd)">
 <div id="list"></div>
 </div>
 <script src="wasm_exec.js"></script>
