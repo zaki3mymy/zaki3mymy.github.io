@@ -57,21 +57,17 @@
   <button onclick="startAuth()">Google でログイン</button>
 </div>
 <div id="app-section" style="display:none">
-<h2>メモ作成</h2>
 <form id="create-form">
   <textarea id="body" maxlength="1024" placeholder="メモを入力... (#タグ)" required rows="4"></textarea>
   <br>
   <button type="submit">保存</button>
   <p id="error" style="color:red"></p>
 </form>
-<h2>メモ一覧</h2>
 <input id="search" type="text"
   placeholder="検索 (テキスト / #タグ / since:yyyy-mm-dd / until:yyyy-mm-dd)">
 <div id="list"></div>
 </div>
 <script src="wasm_exec.js"></script>
 <script src="app.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>eruda.init();</script>
 </body>
 </html>
