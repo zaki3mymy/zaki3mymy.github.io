@@ -10,43 +10,15 @@ const TOKEN_KEY = "fluxjot_token";
 const VERIFIER_KEY = "fluxjot_code_verifier";
 const PENDING_TEXT_KEY = "fluxjot_pending_text";
 
-// PKCE ヘルパー: ランダム文字列生成
-function generateRandomString(len) {
-  const arr = new Uint8Array(len);
-  crypto.getRandomValues(arr);
-  return btoa(String.fromCharCode(...arr))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-}
-
-// PKCE ヘルパー: SHA-256 Base64URL ハッシュ
-async function sha256Base64URL(str) {
-  const buf = await crypto.subtle.digest(
-    "SHA-256", new TextEncoder().encode(str));
-  return btoa(String.fromCharCode(...new Uint8Array(buf)))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-}
-
-// 認証開始: code_verifier を生成して sessionStorage に保存し、Google 認証画面へリダイレクト
+// 認証開始: fluxjot.startAuth() でPKCE verifierと認可URLを取得し、Google 認証画面へリダイレクト
 async function startAuth() {
-  const clientId = window.FLUXJOT_CLIENT_ID;
-  if (!clientId) {
-    console.error("FluxJot: CLIENT_ID が未設定です。WASM ビルド時に -ldflags で注入してください。");
+  if (!window.fluxjot) {
+    console.error("FluxJot: まだ初期化されていません。");
     return;
   }
-  const verifier = generateRandomString(64);
-  const challenge = await sha256Base64URL(verifier);
+  const { authURL, verifier } = await fluxjot.startAuth(REDIRECT_URI);
   sessionStorage.setItem(VERIFIER_KEY, verifier);
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: REDIRECT_URI,
-    response_type: "code",
-    scope: SCOPES,
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-    access_type: "offline",
-    prompt: "consent",
-  });
-  window.location.href = "https://accounts.google.com/o/oauth2/v2/auth?" + params;
+  window.location.href = authURL;
 }
 
 // WASM 変数が truthy になるまでポーリングして待機するヘルパー。
@@ -81,33 +53,16 @@ async function handleOAuthCallback() {
   // URL から code を除去
   window.history.replaceState({}, "", window.location.pathname);
 
-  // FLUXJOT_TOKEN_PROXY_URL は WASM 初期化後にセットされるため、セットされるまで待機する
-  let tokenProxyURL;
+  // fluxjot (WASM) が初期化されるまで待機
   try {
-    tokenProxyURL = await waitForWasmVar("FLUXJOT_TOKEN_PROXY_URL");
+    await waitForWasmVar("fluxjot");
   } catch (e) {
-    console.error("FLUXJOT_TOKEN_PROXY_URL is not set");
+    console.error("FluxJot: fluxjot was not initialized within timeout");
     return false;
   }
-  const resp = await fetch(tokenProxyURL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: window.FLUXJOT_CLIENT_ID || "",
-      code,
-      code_verifier: verifier,
-      grant_type: "authorization_code",
-      redirect_uri: REDIRECT_URI,
-    }),
-  });
-  if (!resp.ok) { console.error("token exchange failed", await resp.text()); return false; }
-  const data = await resp.json();
-  const expiry = new Date(Date.now() + data.expires_in * 1000).toISOString();
-  localStorage.setItem(TOKEN_KEY, JSON.stringify({
-    access_token: data.access_token,
-    refresh_token: data.refresh_token || "",
-    expiry,
-  }));
+
+  const tokenJSON = await fluxjot.exchangeCode(code, verifier, REDIRECT_URI);
+  localStorage.setItem(TOKEN_KEY, tokenJSON);
   return true;
 }
 
