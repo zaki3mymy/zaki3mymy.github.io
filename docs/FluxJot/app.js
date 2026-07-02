@@ -6,7 +6,6 @@
 const REDIRECT_URI = window.location.origin +
   window.location.pathname.replace(/\/?$/, "/");
 const SCOPES = "https://www.googleapis.com/auth/drive";
-const TOKEN_KEY = "fluxjot_token";
 const VERIFIER_KEY = "fluxjot_code_verifier";
 const PENDING_TEXT_KEY = "fluxjot_pending_text";
 
@@ -40,7 +39,7 @@ function waitForWasmVar(name, timeoutMs = 5000) {
   });
 }
 
-// コールバック処理: URL の ?code= を受け取りトークンを取得して localStorage に保存
+// コールバック処理: URL の ?code= を受け取りトークンを取得して Go 側（localStorage）に保存
 async function handleOAuthCallback() {
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
@@ -61,8 +60,8 @@ async function handleOAuthCallback() {
     return false;
   }
 
-  const tokenJSON = await fluxjot.exchangeCode(code, verifier, REDIRECT_URI);
-  localStorage.setItem(TOKEN_KEY, tokenJSON);
+  // Go 側で token を localStorage に保存する（戻り値なし）
+  await fluxjot.exchangeCode(code, verifier, REDIRECT_URI);
   return true;
 }
 
@@ -82,12 +81,13 @@ function updateSyncStatus(state, message) {
   }
 }
 
-// 認証状態に応じて UI を更新
-function updateAuthUI() {
-  const token = localStorage.getItem(TOKEN_KEY);
+// 認証状態に応じて UI を更新。
+// authenticated が true のとき app セクションを表示し、sessionStorage の保留テキストを処理する。
+// authenticated が false のとき auth セクションを表示する。
+function updateAuthUI(authenticated) {
   const authSection = document.getElementById("auth-section");
   const appSection = document.getElementById("app-section");
-  if (token) {
+  if (authenticated) {
     authSection.style.display = "none";
     appSection.style.display = "block";
     const pending = sessionStorage.getItem(PENDING_TEXT_KEY);
@@ -102,13 +102,13 @@ function updateAuthUI() {
 }
 
 // URL の ?text= パラメータを読み取る。
-// 認証済みなら即座に #body へセット、未認証なら sessionStorage に保存。
+// 同期済みなら即座に #body へセット、未認証なら sessionStorage に保存。
 function handleTextParam() {
   const params = new URLSearchParams(window.location.search);
   const text = params.get("text");
   if (!text) return;
   window.history.replaceState({}, "", window.location.pathname);
-  if (localStorage.getItem(TOKEN_KEY)) {
+  if (syncInitialized) {
     setBodyText(text);
   } else {
     sessionStorage.setItem(PENDING_TEXT_KEY, text);
@@ -130,15 +130,13 @@ let syncInitialized = false;
 // ページロード時にコールバックを確認（WASM ロード前に実行）
 handleOAuthCallback().then(authenticated => {
   if (!authenticated) return;
-  updateAuthUI();
   // fluxjot が初期化済みであれば即座に、未初期化なら待機してから実行
   const initAfterAuth = () => {
     if (syncInitialized) return;
-    const tokenJSON = localStorage.getItem(TOKEN_KEY);
-    if (!tokenJSON) return;
     syncInitialized = true;
+    updateAuthUI(true);
     renderList();
-    fluxjot.initSync(tokenJSON)
+    fluxjot.initSync()
       .then(() => fluxjot.startAutoSync(60000))
       .catch(err => console.error("FluxJot: sync init failed:", err));
   };
@@ -170,14 +168,19 @@ WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
     go.run(result.instance);
     const waitForFluxjot = () => {
       if (window.fluxjot) {
-        updateAuthUI();
-        const tokenJSON = localStorage.getItem(TOKEN_KEY);
-        if (tokenJSON && !syncInitialized) {
-          syncInitialized = true;
-          renderList();
-          fluxjot.initSync(tokenJSON)
-            .then(() => fluxjot.startAutoSync(60000))
-            .catch(err => console.error("FluxJot: sync init failed:", err));
+        if (!syncInitialized) {
+          fluxjot.initSync()
+            .then(() => {
+              if (syncInitialized) return;
+              syncInitialized = true;
+              updateAuthUI(true);
+              fluxjot.startAutoSync(60000)
+                .catch(err => console.error("FluxJot: startAutoSync failed:", err));
+              renderList();
+            })
+            .catch(() => {
+              updateAuthUI(false);
+            });
         }
       } else {
         setTimeout(waitForFluxjot, 50);
