@@ -289,11 +289,17 @@ async function renderList() {
   }
   entries.forEach(e => {
     const div = document.createElement("div");
+    div.className = "memo-card";
+    div.dataset.id = e.id;
     div.innerHTML = `
-      <p>${e.createdAt}</p>
-      <p style="white-space:pre-wrap">${renderBody(e.body, e.tags, currentQuery)}</p>
-      <button onclick="startEdit('${e.id}', this)">編集</button>
-      <button onclick="deleteEntry('${e.id}')">削除</button>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:0.85em;color:#666">${e.createdAt}</span>
+        <span>
+          <button onclick="startEdit('${e.id}', this)" title="編集" style="border:none;background:none;cursor:pointer;font-size:1.2em">✏️</button>
+          <button onclick="deleteEntry('${e.id}')" title="削除" style="border:none;background:none;cursor:pointer;font-size:1.2em">🗑️</button>
+        </span>
+      </div>
+      <p class="memo-body" style="white-space:pre-wrap">${renderBody(e.body, e.tags, currentQuery)}</p>
       <hr>
     `;
     list.appendChild(div);
@@ -317,15 +323,16 @@ searchEl.addEventListener("keydown", e => {
 });
 
 async function deleteEntry(id) {
+  if (!confirm("このメモを削除しますか？")) return;
   await fluxjot.delete({ id });
   await renderList();
 }
 
 function startEdit(id, btn) {
-  const div = btn.parentElement;
-  const currentBody = div.querySelector("p:nth-child(2)").textContent.trim();
+  const div = btn.closest(".memo-card");
+  const currentBody = div.querySelector(".memo-body").textContent.trim();
   div.innerHTML = `
-    <textarea id="edit-body-${id}"
+    <textarea id="edit-body-${id}" rows="4"
       onkeydown="if(event.ctrlKey&&event.key==='Enter'){event.preventDefault();saveEdit('${id}')}"
     >${currentBody}</textarea>
     <br>

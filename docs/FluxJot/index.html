@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="format-detection" content="telephone=no">
 <title>FluxJot</title>
 <link id="sakura-theme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sakura.css/css/sakura.css" type="text/css">
 <style>
@@ -37,7 +38,7 @@
 }
 @media (max-width: 684px) {
   #body, #search, [id^="edit-body-"] {
-    font-size: 1.35rem;
+    font-size: 16px; /* iOS Safari のズーム抑制（16px 未満でズームが発生するため） */
   }
 }
 </style>
