@@ -58,13 +58,18 @@
   <button onclick="startAuth()">Google でログイン</button>
 </div>
 <div id="app-section" style="display:none">
-<form id="create-form">
-  <textarea id="body" maxlength="1024" placeholder="メモを入力... (#タグ)" required rows="4"></textarea>
-  <br>
-  <button type="submit">保存</button>
-  <p id="error" style="color:red"></p>
-</form>
-<input id="search" type="text"
+<button id="fab" onclick="document.getElementById('body').value='';document.getElementById('save-btn').disabled=true;document.getElementById('create-dialog').showModal()"
+  style="position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;font-size:1.8em;cursor:pointer;z-index:200">＋</button>
+<dialog id="create-dialog" style="width:min(48ch,90vw)">
+  <form id="create-form" method="dialog">
+    <textarea id="body" maxlength="1024" placeholder="メモを入力... (#タグ)" rows="6" style="width:100%"></textarea>
+    <br>
+    <button type="button" id="save-btn" disabled>保存</button>
+    <button type="button" onclick="document.getElementById('create-dialog').close()">キャンセル</button>
+    <p id="error" style="color:red"></p>
+  </form>
+</dialog>
+<input id="search" type="search"
   placeholder="検索 (テキスト / #タグ / since:yyyy-mm-dd / until:yyyy-mm-dd)">
 <div id="list"></div>
 </div>

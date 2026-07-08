@@ -72,10 +72,18 @@ async function handleOAuthCallback() {
 function updateSyncStatus(state, message) {
   const el = document.getElementById("sync-status");
   if (!el) return;
+  if (!message) {
+    el.className = "";
+    el.textContent = "";
+    el.onclick = null;
+    el.style.display = "none";
+    return;
+  }
+  el.style.display = "";
   el.className = `sync-${state}`;
   el.textContent = message;
   if (state === "error") {
-    el.onclick = () => { el.textContent = ""; el.className = ""; };
+    el.onclick = () => { el.textContent = ""; el.className = ""; el.style.display = "none"; };
   } else {
     el.onclick = null;
   }
@@ -116,11 +124,15 @@ function handleTextParam() {
 }
 
 function setBodyText(text) {
+  const dialog = document.getElementById("create-dialog");
+  if (dialog) {
+    dialog.showModal();
+  }
   const bodyEl = document.getElementById("body");
   if (!bodyEl) return;
   bodyEl.value = text;
   bodyEl.focus();
-  bodyEl.scrollIntoView({ behavior: "smooth" });
+  document.getElementById("save-btn").disabled = !text.trim();
 }
 
 // 二重呼び出し防御フラグ: initAfterAuth と waitForFluxjot のどちらか一方が先に
@@ -189,8 +201,7 @@ WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
     waitForFluxjot();
   });
 
-document.getElementById("create-form").addEventListener("submit", async e => {
-  e.preventDefault();
+document.getElementById("save-btn").addEventListener("click", async () => {
   if (!window.fluxjot) {
     document.getElementById("error").textContent = "FluxJot がまだ初期化されていません。";
     return;
@@ -198,18 +209,44 @@ document.getElementById("create-form").addEventListener("submit", async e => {
   const body = document.getElementById("body").value;
   try {
     await fluxjot.create({ body });
-    e.target.reset();
+    document.getElementById("body").value = "";
+    document.getElementById("save-btn").disabled = true;
     document.getElementById("error").textContent = "";
+    document.getElementById("create-dialog").close();
     await renderList();
   } catch (err) {
     document.getElementById("error").textContent = err;
   }
 });
 
+document.getElementById("create-dialog").addEventListener("close", () => {
+  document.getElementById("error").textContent = "";
+});
+
+document.getElementById("body").addEventListener("input", e => {
+  document.getElementById("save-btn").disabled = !e.target.value.trim();
+});
+
 document.getElementById("body").addEventListener("keydown", e => {
   if (e.ctrlKey && e.key === "Enter") {
     e.preventDefault();
-    document.getElementById("create-form").requestSubmit();
+    document.getElementById("save-btn").click();
+  }
+});
+
+document.addEventListener("keydown", event => {
+  if (!(event.ctrlKey || event.metaKey)) return;
+  if (event.key === "m") {
+    if (document.activeElement && document.activeElement.id === "body") return;
+    event.preventDefault();
+    document.getElementById("body").value = "";
+    document.getElementById("save-btn").disabled = true;
+    document.getElementById("create-dialog").showModal();
+  } else if (event.key === "k") {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === "TEXTAREA" || tag === "INPUT") return;
+    event.preventDefault();
+    document.getElementById("search").focus();
   }
 });
 
@@ -268,7 +305,7 @@ function renderBody(body, tags, query) {
     result += escapeHTML(remaining.slice(0, bestIdx));
     const matched = remaining.slice(bestIdx, bestIdx + bestLen);
     if (bestCand.isTag) {
-      result += `<span style="background:${tagColor(bestCand.tag)};color:#fff;padding:0 4px;border-radius:3px;margin-right:2px">${escapeHTML(matched)}</span>`;
+      result += `<span style="background:${tagColor(bestCand.tag)};color:#fff;padding:0 4px;border-radius:3px;margin-right:2px;cursor:pointer" onclick="addTagToSearch('${escapeHTML(bestCand.tag)}')">${escapeHTML(matched)}</span>`;
     } else {
       result += `<mark>${escapeHTML(matched)}</mark>`;
     }
@@ -304,6 +341,16 @@ async function renderList() {
     `;
     list.appendChild(div);
   });
+}
+
+function addTagToSearch(tag) {
+  const token = "#" + tag;
+  const val = searchEl.value.trim();
+  const tokens = val ? val.split(/[\s\u3000]+/) : [];
+  if (tokens.includes(token)) return;
+  searchEl.value = val ? val + " " + token : token;
+  currentQuery = searchEl.value;
+  renderList();
 }
 
 // デバウンス検索（300ms）および Enter キーによる即時検索
