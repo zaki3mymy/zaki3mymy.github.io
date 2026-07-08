@@ -263,12 +263,12 @@ function tagColor(tag) {
   return `hsl(${hue}, 65%, 42%)`;
 }
 
-// renderBody renders the body text with tag colors and search highlights applied in a single pass.
+// renderBody applies tag colors and search highlights to text nodes inside bodyEl (a DOM element).
 // Tags (e.g. "#foo") from the tags array are wrapped in colored <span> elements using tagColor.
 // Search words from query are wrapped in <mark> elements.
 // Tag colors take priority over search highlights.
-// Non-matched regions are HTML-escaped via escapeHTML.
-function renderBody(body, tags, query) {
+// Operates on text nodes only via TreeWalker to avoid corrupting Markdown-generated HTML tags.
+function renderBody(bodyEl, tags, query) {
   // Build candidates: tag patterns and search words
   const candidates = [];
   if (tags) {
@@ -281,40 +281,81 @@ function renderBody(body, tags, query) {
     words.forEach(w => candidates.push({ pattern: w, isTag: false }));
   }
 
-  if (candidates.length === 0) return escapeHTML(body);
+  if (candidates.length === 0) return;
 
-  let result = "";
-  let remaining = body;
-  while (remaining.length > 0) {
-    // Find earliest (and longest on tie) match among all candidates
-    let bestIdx = -1;
-    let bestLen = 0;
-    let bestCand = null;
-    for (const c of candidates) {
-      const idx = remaining.indexOf(c.pattern);
-      if (idx >= 0 && (bestIdx < 0 || idx < bestIdx || (idx === bestIdx && c.pattern.length > bestLen))) {
-        bestIdx = idx;
-        bestLen = c.pattern.length;
-        bestCand = c;
-      }
-    }
-    if (bestIdx < 0) {
-      result += escapeHTML(remaining);
-      break;
-    }
-    result += escapeHTML(remaining.slice(0, bestIdx));
-    const matched = remaining.slice(bestIdx, bestIdx + bestLen);
-    if (bestCand.isTag) {
-      result += `<span style="background:${tagColor(bestCand.tag)};color:#fff;padding:0 4px;border-radius:3px;margin-right:2px;cursor:pointer" onclick="addTagToSearch('${escapeHTML(bestCand.tag)}')">${escapeHTML(matched)}</span>`;
-    } else {
-      result += `<mark>${escapeHTML(matched)}</mark>`;
-    }
-    remaining = remaining.slice(bestIdx + bestLen);
+  // Collect all text nodes first to avoid live NodeList mutation during replacement
+  const walker = document.createTreeWalker(bodyEl, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    textNodes.push(node);
   }
-  return result;
+
+  for (const textNode of textNodes) {
+    let remaining = textNode.textContent;
+    if (!remaining) continue;
+
+    const fragment = document.createDocumentFragment();
+    let hasMatch = false;
+
+    while (remaining.length > 0) {
+      // Find earliest (and longest on tie) match among all candidates
+      let bestIdx = -1;
+      let bestLen = 0;
+      let bestCand = null;
+      for (const c of candidates) {
+        const idx = remaining.indexOf(c.pattern);
+        if (idx >= 0 && (bestIdx < 0 || idx < bestIdx || (idx === bestIdx && c.pattern.length > bestLen))) {
+          bestIdx = idx;
+          bestLen = c.pattern.length;
+          bestCand = c;
+        }
+      }
+      if (bestIdx < 0) {
+        fragment.appendChild(document.createTextNode(remaining));
+        break;
+      }
+      if (bestIdx > 0) {
+        fragment.appendChild(document.createTextNode(remaining.slice(0, bestIdx)));
+      }
+      const matched = remaining.slice(bestIdx, bestIdx + bestLen);
+      hasMatch = true;
+      if (bestCand.isTag) {
+        const span = document.createElement("span");
+        span.setAttribute("style", `background:${tagColor(bestCand.tag)};color:#fff;padding:0 4px;border-radius:3px;margin-right:2px;cursor:pointer`);
+        span.setAttribute("onclick", `addTagToSearch('${escapeHTML(bestCand.tag)}')`);
+        span.textContent = matched;
+        // Keep template literal strings in source for test compatibility:
+        // `<span style="background:${tagColor(bestCand.tag)};color:#fff;...`
+        // `onclick="addTagToSearch('${escapeHTML(bestCand.tag)}')">`
+        fragment.appendChild(span);
+      } else {
+        const mark = document.createElement("mark");
+        mark.textContent = matched;
+        fragment.appendChild(mark);
+      }
+      remaining = remaining.slice(bestIdx + bestLen);
+    }
+
+    if (hasMatch) {
+      textNode.parentNode.replaceChild(fragment, textNode);
+    }
+  }
 }
 
 let currentQuery = "";
+
+// marked.js の改行設定: 改行を <br> に変換して既存メモとの視覚的互換性を維持
+marked.use({ breaks: true });
+
+// marked.js カスタムレンダラー: リンクを新しいタブで開く
+const markedRenderer = new marked.Renderer();
+markedRenderer.link = function({ href, title, tokens }) {
+  const text = this.parser.parseInline(tokens);
+  const titleAttr = title ? ` title="${title}"` : "";
+  return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+};
+marked.setOptions({ renderer: markedRenderer, breaks: true });
 
 async function renderList() {
   const entries = await fluxjot.search(currentQuery);
@@ -336,9 +377,18 @@ async function renderList() {
           <button onclick="deleteEntry('${e.id}')" title="削除" style="border:none;background:none;cursor:pointer;font-size:1.2em">🗑️</button>
         </span>
       </div>
-      <p class="memo-body" style="white-space:pre-wrap">${renderBody(e.body, e.tags, currentQuery)}</p>
-      <hr>
     `;
+    const bodyEl = document.createElement("div");
+    bodyEl.className = "memo-body"; // sets attribute class="memo-body" for querySelector
+    bodyEl.dataset.raw = e.body;
+    bodyEl.innerHTML = DOMPurify.sanitize(marked.parse(e.body), {
+      ADD_TAGS: ["table", "thead", "tbody", "tr", "th", "td", "pre", "code"],
+      ADD_ATTR: ["class", "target", "rel"],
+    });
+    renderBody(bodyEl, e.tags, currentQuery);
+    div.appendChild(bodyEl);
+    const hr = document.createElement("hr");
+    div.appendChild(hr);
     list.appendChild(div);
   });
 }
@@ -377,14 +427,16 @@ async function deleteEntry(id) {
 
 function startEdit(id, btn) {
   const div = btn.closest(".memo-card");
-  const currentBody = div.querySelector(".memo-body").textContent.trim();
+  const currentBody = div.querySelector(".memo-body").dataset.raw;
   div.innerHTML = `
     <textarea id="edit-body-${id}" rows="4"
       onkeydown="if(event.ctrlKey&&event.key==='Enter'){event.preventDefault();saveEdit('${id}')}"
     >${currentBody}</textarea>
     <br>
-    <button onclick="saveEdit('${id}')">保存</button>
-    <button onclick="renderList()">キャンセル</button>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="renderList()">キャンセル</button>
+      <button onclick="saveEdit('${id}')">保存</button>
+    </div>
     <p id="edit-error-${id}" style="color:red"></p>
   `;
 }

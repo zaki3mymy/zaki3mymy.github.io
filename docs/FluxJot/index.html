@@ -64,8 +64,10 @@
   <form id="create-form" method="dialog">
     <textarea id="body" maxlength="1024" placeholder="メモを入力... (#タグ)" rows="6" style="width:100%"></textarea>
     <br>
-    <button type="button" id="save-btn" disabled>保存</button>
-    <button type="button" onclick="document.getElementById('create-dialog').close()">キャンセル</button>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button type="button" onclick="document.getElementById('create-dialog').close()">キャンセル</button>
+      <button type="button" id="save-btn" disabled>保存</button>
+    </div>
     <p id="error" style="color:red"></p>
   </form>
 </dialog>
@@ -73,6 +75,8 @@
   placeholder="検索 (テキスト / #タグ / since:yyyy-mm-dd / until:yyyy-mm-dd)">
 <div id="list"></div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
 <script src="wasm_exec.js"></script>
 <script src="app.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
