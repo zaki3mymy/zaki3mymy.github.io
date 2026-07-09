@@ -99,7 +99,7 @@ function updateAuthUI(authenticated) {
     authSection.style.display = "none";
     appSection.style.display = "block";
     const pending = sessionStorage.getItem(PENDING_TEXT_KEY);
-    if (pending) {
+    if (pending !== null) {
       sessionStorage.removeItem(PENDING_TEXT_KEY);
       setBodyText(pending);
     }
@@ -114,7 +114,7 @@ function updateAuthUI(authenticated) {
 function handleTextParam() {
   const params = new URLSearchParams(window.location.search);
   const text = params.get("text");
-  if (!text) return;
+  if (text === null) return;
   window.history.replaceState({}, "", window.location.pathname);
   if (syncInitialized) {
     setBodyText(text);

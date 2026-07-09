@@ -37,6 +37,9 @@
   width: 100%;
   font-size: 1.8rem;
 }
+#list {
+  overflow-wrap: break-word;
+}
 @media (max-width: 684px) {
   #body, #search, [id^="edit-body-"] {
     font-size: 16px; /* iOS Safari のズーム抑制（16px 未満でズームが発生するため） */
@@ -54,7 +57,7 @@
   <option value="sakura-vader">Vader</option>
   <option value="sakura-earthly">Earthly</option>
 </select>
-<div id="auth-section">
+<div id="auth-section" style="display:none">
   <p>Google Drive と同期するにはログインしてください。</p>
   <button onclick="startAuth()">Google でログイン</button>
 </div>
