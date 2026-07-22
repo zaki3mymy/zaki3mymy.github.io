@@ -139,6 +139,11 @@ function setBodyText(text) {
 // renderList/initSync を実行したら他方はスキップする。
 let syncInitialized = false;
 
+// 単一編集モード管理: 編集中のメモ ID と編集前の本文を保持する。
+// editingId が設定されている間は renderList() をスキップしてテキストエリアを保護する。
+let editingId = null;
+let editingRawBody = null;
+
 // ページロード時にコールバックを確認（WASM ロード前に実行）
 handleOAuthCallback().then(authenticated => {
   if (!authenticated) return;
@@ -358,6 +363,7 @@ markedRenderer.link = function({ href, title, tokens }) {
 marked.setOptions({ renderer: markedRenderer, breaks: true });
 
 async function renderList() {
+  if (editingId) return; // 編集中は再描画しない（textarea の DOM を保護する）
   const entries = await fluxjot.search(currentQuery);
   const list = document.getElementById("list");
   list.innerHTML = "";
@@ -369,6 +375,8 @@ async function renderList() {
     const div = document.createElement("div");
     div.className = "memo-card";
     div.dataset.id = e.id;
+    div.dataset.tags = JSON.stringify(e.tags || []);
+    div.dataset.createdAt = e.createdAt;
     div.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:0.85em;color:#666">${e.createdAt}</span>
@@ -421,20 +429,62 @@ searchEl.addEventListener("keydown", e => {
 
 async function deleteEntry(id) {
   if (!confirm("このメモを削除しますか？")) return;
+  editingId = null;
+  editingRawBody = null;
   await fluxjot.delete({ id });
   await renderList();
 }
 
+// restoreCard は該当カードの innerHTML を通常表示（本文＋操作ボタン）に戻す。
+// renderList() を呼ばずカード単体だけを復元するため、他のカードに影響しない。
+function restoreCard(id, rawBody) {
+  const div = document.querySelector(`.memo-card[data-id="${id}"]`);
+  if (!div) return;
+  const tags = JSON.parse(div.dataset.tags || "[]");
+  const createdAt = div.dataset.createdAt || "";
+  div.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:0.85em;color:#666">${createdAt}</span>
+      <span>
+        <button onclick="startEdit('${id}', this)" title="編集" style="border:none;background:none;cursor:pointer;font-size:1.2em">✏️</button>
+        <button onclick="deleteEntry('${id}')" title="削除" style="border:none;background:none;cursor:pointer;font-size:1.2em">🗑️</button>
+      </span>
+    </div>
+  `;
+  const bodyEl = document.createElement("div");
+  bodyEl.className = "memo-body";
+  bodyEl.dataset.raw = rawBody;
+  bodyEl.innerHTML = DOMPurify.sanitize(marked.parse(rawBody), {
+    ADD_TAGS: ["table", "thead", "tbody", "tr", "th", "td", "pre", "code"],
+    ADD_ATTR: ["class", "target", "rel"],
+  });
+  renderBody(bodyEl, tags, currentQuery);
+  div.appendChild(bodyEl);
+  const hr = document.createElement("hr");
+  div.appendChild(hr);
+}
+
+function cancelEdit(id) {
+  editingId = null;
+  editingRawBody = null;
+  renderList();
+}
+
 function startEdit(id, btn) {
+  if (editingId && editingId !== id) {
+    restoreCard(editingId, editingRawBody); // renderList を呼ばずカード単体を復元
+  }
+  editingId = id;
   const div = btn.closest(".memo-card");
-  const currentBody = div.querySelector(".memo-body").dataset.raw;
+  editingRawBody = div.querySelector(".memo-body").dataset.raw;
+  const currentBody = editingRawBody;
   div.innerHTML = `
     <textarea id="edit-body-${id}" rows="4"
       onkeydown="if(event.ctrlKey&&event.key==='Enter'){event.preventDefault();saveEdit('${id}')}"
     >${currentBody}</textarea>
     <br>
     <div style="display:flex;justify-content:flex-end;gap:8px">
-      <button onclick="renderList()">キャンセル</button>
+      <button onclick="cancelEdit('${id}')">キャンセル</button>
       <button onclick="saveEdit('${id}')">保存</button>
     </div>
     <p id="edit-error-${id}" style="color:red"></p>
@@ -444,6 +494,8 @@ function startEdit(id, btn) {
 async function saveEdit(id) {
   const body = document.getElementById("edit-body-" + id).value;
   try {
+    editingId = null;
+    editingRawBody = null;
     await fluxjot.update({ id, body });
     await renderList();
   } catch (err) {
