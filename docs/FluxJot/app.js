@@ -183,25 +183,31 @@ WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
   )
   .then(result => {
     go.run(result.instance);
-    const waitForFluxjot = () => {
-      if (window.fluxjot) {
-        if (!syncInitialized) {
-          fluxjot.initSync()
-            .then(() => {
-              if (syncInitialized) return;
-              syncInitialized = true;
-              updateAuthUI(true);
-              fluxjot.startAutoSync(60000)
-                .catch(err => console.error("FluxJot: startAutoSync failed:", err));
-              renderList();
-            })
-            .catch(() => {
-              updateAuthUI(false);
-            });
-        }
-      } else {
-        setTimeout(waitForFluxjot, 50);
+    const waitForFluxjot = async () => {
+      if (!window.fluxjot) { setTimeout(waitForFluxjot, 50); return; }
+      if (syncInitialized) return;
+
+      let authenticated;
+      try {
+        authenticated = await fluxjot.isAuthenticated();
+      } catch (err) {
+        updateAuthUI(false);
+        return;
       }
+
+      if (syncInitialized) return;
+
+      if (!authenticated) { updateAuthUI(false); return; }
+
+      syncInitialized = true;
+      updateAuthUI(true);
+
+      fluxjot.initSync()
+        .then(() => {
+          renderList();
+          return fluxjot.startAutoSync(60000);
+        })
+        .catch(err => console.error("FluxJot: sync failed:", err));
     };
     waitForFluxjot();
   });
@@ -409,6 +415,15 @@ function addTagToSearch(tag) {
   searchEl.value = val ? val + " " + token : token;
   currentQuery = searchEl.value;
   renderList();
+}
+
+// 同期進捗コールバック（OnProgress）によるデバウンス描画（300ms）。
+// jsSync / startAutoSync の完了後に renderList() が直接呼ばれる場合もあるが、
+// DOM 更新は冪等なため機能上の問題はなく、この二重発火は意図的に許容する。
+let progressRenderTimer;
+function debouncedRenderList() {
+  clearTimeout(progressRenderTimer);
+  progressRenderTimer = setTimeout(() => renderList(), 300);
 }
 
 // デバウンス検索（300ms）および Enter キーによる即時検索
